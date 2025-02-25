@@ -32,86 +32,52 @@ model = AutoModelForImageClassification.from_pretrained(model_name)
 image_processor = AutoImageProcessor.from_pretrained(model_name)
 
 def process_image(image_bytes):
-    try:
-        # Convert bytes to PIL Image
-        image = Image.open(io.BytesIO(image_bytes))
+    # Convert bytes to PIL Image
+    image = Image.open(io.BytesIO(image_bytes))
 
-        if image.mode != "RGB":
-            image = image.convert("RGB")
-        
-        # Convert PIL Image to numpy array for MTCNN
-        image_np = np.array(image)
-        
-        if image_np.size == 0:
-                raise HTTPException(status_code=400, detail="Invalid image data. The image appears to be empty.")
-        
-        # Detect faces using MTCNN
-        faces = detector.detect_faces(image_np)
-        
-        if not faces:
-            return None
-        
-        if len(faces) > 1:
-            raise HTTPException(status_code=400, detail="Multiple faces detected. Please upload an image with a single clear human face.")
-        
-        # Get the first face (assuming single person)
-        face = faces[0]
-        x, y, width, height = face['box']
-
-        # Ensure coordinates are valid (sometimes MTCNN can return negative values)
-        x = max(0, x)
-        y = max(0, y)
-        width = max(1, width)
-        height = max(1, height)
-        
-        # Ensure the box is within image boundaries
-        if x + width > image.width:
-            width = image.width - x
-        if y + height > image.height:
-            height = image.height - y
-        
-
-        confidence = face['confidence']
-
-        if confidence < 0.9:  # Using a high threshold to filter out non-human faces
-            raise HTTPException(status_code=400, detail="No human face detected. Please upload an image with a clear human face.")
-        
-        # Extract face region
-        face_image = image.crop((x, y, x + width, y + height))
-
-        # face_image = face_image.resize((224, 224))
-        
-        return face_image
+    if image.mode != "RGB":
+        image = image.convert("RGB")
     
-    except Exception as e:
-    # Check for specific errors
-        if "cannot identify image file" in str(e).lower():
-            raise HTTPException(status_code=400, detail="Invalid image format. Please upload a valid image file.")
-        # Re-raise other errors with more detail
-        raise HTTPException(status_code=400, detail=f"Error processing image: {str(e)}")
+    # Convert PIL Image to numpy array for MTCNN
+    image_np = np.array(image)
+    
+    # Detect faces using MTCNN
+    faces = detector.detect_faces(image_np)
+    
+    if not faces:
+        return None
+    
+    if len(faces) > 1:
+        raise HTTPException(status_code=400, detail="Multiple faces detected. Please upload an image with a single clear human face.")
+    
+    # Get the first face (assuming single person)
+    face = faces[0]
+    x, y, width, height = face['box']
+    confidence = face['confidence']
+
+    if confidence < 0.9:  # Using a high threshold to filter out non-human faces
+        raise HTTPException(status_code=400, detail="No human face detected. Please upload an image with a clear human face.")
+    
+    # Extract face region
+    face_image = image.crop((x, y, x + width, y + height))
+    
+    return face_image
 
 def predict_gender(face_image):
-    try:
-        if face_image is None:
-            raise ValueError("Face image is None")
-        
-        # Prepare image for the model
-        inputs = image_processor(face_image, return_tensors="pt")
-        # print(inputs)
+    # Prepare image for the model
+    inputs = image_processor(face_image, return_tensors="pt")
+    # print(inputs)
 
-        
-        # Get prediction
-        with torch.no_grad():
-            outputs = model(**inputs)
-            predictions = outputs.logits.softmax(dim=-1)
-            
-        # Get predicted class
-        predicted_class = model.config.id2label[predictions.argmax().item()]
-        
-        return predicted_class
     
-    except Exception as e:
-        raise HTTPException(status_code=400, detail=f"Error predicting gender: {str(e)}")
+    # Get prediction
+    with torch.no_grad():
+        outputs = model(**inputs)
+        predictions = outputs.logits.softmax(dim=-1)
+        
+    # Get predicted class
+    predicted_class = model.config.id2label[predictions.argmax().item()]
+    
+    return predicted_class
 
 # @app.post("/predict-gender/<predicted_class>")
 # async def predict_gender_endpoint(file: UploadFile = File(...)):
