@@ -79,7 +79,7 @@ def process_image(image_bytes):
         # Extract face region
         face_image = image.crop((x, y, x + width, y + height))
 
-        face_image = face_image.resize((224, 224))
+        # face_image = face_image.resize((224, 224))
         
         return face_image
     
