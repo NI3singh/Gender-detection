@@ -109,7 +109,7 @@ def predict_gender(face_image):
 @app.post("/predict-gender")
 async def predict_gender_endpoint(
     file: UploadFile = File(...),
-    selected_gender: Gender = Gender.MALE
+    selected_gender: Gender = Query(..., description="Select gender: male or female")
 ):
     try:
         # Read image file
