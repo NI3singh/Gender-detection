@@ -28,6 +28,9 @@ image_processor = AutoImageProcessor.from_pretrained(model_name)
 def process_image(image_bytes):
     # Convert bytes to PIL Image
     image = Image.open(io.BytesIO(image_bytes))
+
+    if image.mode != "RGB":
+        image = image.convert("RGB")
     
     # Convert PIL Image to numpy array for MTCNN
     image_np = np.array(image)
