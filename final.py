@@ -47,6 +47,9 @@ def process_image(image_bytes):
     if not faces:
         return None
     
+    if len(faces) > 1:
+        raise HTTPException(status_code=400, detail="Multiple faces detected. Please upload an image with a single clear human face.")
+    
     # Get the first face (assuming single person)
     face = faces[0]
     x, y, width, height = face['box']
@@ -127,7 +130,7 @@ async def predict_gender_endpoint(
             if selected_gender.value == detected_gender.lower():
                 return {"gender": detected_gender}
             else:
-                return {"result": "mismatch", "selected_gender": selected_gender.value, "detected_gender": detected_gender}
+                return {"result": "mismatched gender please try again"}
         else:
             # Just return detected gender
             return {"gender": detected_gender}
