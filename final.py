@@ -1,5 +1,6 @@
-from fastapi import FastAPI, File, UploadFile, HTTPException
+from fastapi import FastAPI, File, UploadFile, HTTPException, Query
 from PIL import Image
+from enum import Enum
 import io
 import torch
 from mtcnn import MTCNN
@@ -16,6 +17,11 @@ async def root():
         "message": "Welcome to the Gender Detection API",
         "usage": "Send a POST request with an image file to /predict-gender endpoint"
     }
+
+class Gender(str, Enum):
+    MALE = "male"
+    FEMALE = "female"
+
 
 # Initialize MTCNN for face detection
 detector = MTCNN()
@@ -103,7 +109,7 @@ def predict_gender(face_image):
 @app.post("/predict-gender")
 async def predict_gender_endpoint(
     file: UploadFile = File(...),
-    selected_gender: str = None
+    selected_gender: Gender = None
 ):
     try:
         # Read image file
@@ -117,16 +123,11 @@ async def predict_gender_endpoint(
         
         # If user selected a gender, compare with detected
         if selected_gender:
-            selected_gender = selected_gender.lower()
-            # Validate input
-            if selected_gender not in ["male", "female"]:
-                raise HTTPException(status_code=400, detail="Invalid gender selection. Please choose 'male' or 'female'")
-            
             # Check if they match
-            if selected_gender == detected_gender.lower():
+            if selected_gender.value == detected_gender.lower():
                 return {"gender": detected_gender}
             else:
-                return {"result": "mismatch", "selected_gender": selected_gender, "detected_gender": detected_gender}
+                return {"result": "mismatch", "selected_gender": selected_gender.value, "detected_gender": detected_gender}
         else:
             # Just return detected gender
             return {"gender": detected_gender}
