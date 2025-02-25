@@ -6,8 +6,9 @@ from mtcnn import MTCNN
 import numpy as np
 from transformers import AutoModelForImageClassification, AutoImageProcessor
 import cv2
+from fastapi.responses import JSONResponse
 
-app = FastAPI()
+app = FastAPI(title="Gender Detection API")
 
 @app.get("/")
 async def root():
@@ -35,7 +36,7 @@ def process_image(image_bytes):
     faces = detector.detect_faces(image_np)
     
     if not faces:
-        raise HTTPException(status_code=400, detail="No face detected in the image. Please upload a different image.")
+        return None
     
     # Get the first face (assuming single person)
     face = faces[0]
@@ -49,7 +50,7 @@ def process_image(image_bytes):
 def predict_gender(face_image):
     # Prepare image for the model
     inputs = image_processor(face_image, return_tensors="pt")
-    print(inputs)
+    # print(inputs)
 
     
     # Get prediction
@@ -71,16 +72,19 @@ async def predict_gender_endpoint(file: UploadFile = File(...)):
         # Process image and get face
         face_image = process_image(image_bytes)
         
+        if face_image is None:
+            return JSONResponse(
+                status_code=400,
+                content={"detail": "No face detected in the image. Please upload a different image."}
+            )
+        
         # Predict gender
         gender = predict_gender(face_image)
         
         return {"gender": gender}
         
-    except HTTPException as e:
-        raise e
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"An error occurred: {str(e)}")
-
-if __name__ == "__main__":
-    import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+        return JSONResponse(
+            status_code=500,
+            content={"detail": f"An error occurred: {str(e)}"}
+        )
