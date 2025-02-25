@@ -70,8 +70,41 @@ def predict_gender(face_image):
     
     return predicted_class
 
+# @app.post("/predict-gender/<predicted_class>")
+# async def predict_gender_endpoint(file: UploadFile = File(...)):
+#     try:
+#         # Read image file
+#         image_bytes = await file.read()
+        
+#         # Process image and get face
+#         face_image = process_image(image_bytes)
+        
+#         if face_image is None:
+#             return JSONResponse(
+#                 status_code=400,
+#                 content={"detail": "No face detected in the image. Please upload a different image."}
+#             )
+        
+#         # Predict gender
+#         gender = predict_gender(face_image)
+        
+#         if gender.lower() == predicted_class.lower():
+#             return jsonify({"gender": gender}), 200
+#         else:
+#             return jsonify({"error": "Gender mismatch"}), 400
+#         # return {"gender": gender}
+        
+#     except Exception as e:
+#         return JSONResponse(
+#             status_code=500,
+#             content={"detail": f"An error occurred: {str(e)}"}
+#         )
+
 @app.post("/predict-gender")
-async def predict_gender_endpoint(file: UploadFile = File(...)):
+async def predict_gender_endpoint(
+    file: UploadFile = File(...),
+    selected_gender: str = None
+):
     try:
         # Read image file
         image_bytes = await file.read()
@@ -79,19 +112,26 @@ async def predict_gender_endpoint(file: UploadFile = File(...)):
         # Process image and get face
         face_image = process_image(image_bytes)
         
-        if face_image is None:
-            return JSONResponse(
-                status_code=400,
-                content={"detail": "No face detected in the image. Please upload a different image."}
-            )
-        
         # Predict gender
-        gender = predict_gender(face_image)
+        detected_gender = predict_gender(face_image)
         
-        return {"gender": gender}
+        # If user selected a gender, compare with detected
+        if selected_gender:
+            selected_gender = selected_gender.lower()
+            # Validate input
+            if selected_gender not in ["male", "female"]:
+                raise HTTPException(status_code=400, detail="Invalid gender selection. Please choose 'male' or 'female'")
+            
+            # Check if they match
+            if selected_gender == detected_gender.lower():
+                return {"gender": detected_gender}
+            else:
+                return {"result": "mismatch", "selected_gender": selected_gender, "detected_gender": detected_gender}
+        else:
+            # Just return detected gender
+            return {"gender": detected_gender}
         
+    except HTTPException as e:
+        raise e
     except Exception as e:
-        return JSONResponse(
-            status_code=500,
-            content={"detail": f"An error occurred: {str(e)}"}
-        )
+        raise HTTPException(status_code=500, detail=f"An error occurred: {str(e)}")
