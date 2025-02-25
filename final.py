@@ -44,6 +44,10 @@ def process_image(image_bytes):
     # Get the first face (assuming single person)
     face = faces[0]
     x, y, width, height = face['box']
+    confidence = face['confidence']
+
+    if confidence < 0.8:  # Using a high threshold to filter out non-human faces
+        raise HTTPException(status_code=400, detail="No human face detected. Please upload an image with a clear human face.")
     
     # Extract face region
     face_image = image.crop((x, y, x + width, y + height))
