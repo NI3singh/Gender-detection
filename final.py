@@ -48,7 +48,7 @@ def process_image(image_bytes):
         return None
     
     if len(faces) > 1:
-        raise HTTPException(status_code=400, detail="Multiple faces detected. Please upload an image with a single clear human face.")
+        raise HTTPException(status_code=422, detail="Multiple faces detected. Please upload an image with a single clear human face.")
     
     # Get the first face (assuming single person)
     face = faces[0]
@@ -56,7 +56,7 @@ def process_image(image_bytes):
     confidence = face['confidence']
 
     if confidence < 0.9:  # Using a high threshold to filter out non-human faces
-        raise HTTPException(status_code=400, detail="No human face detected. Please upload an image with a clear human face.")
+        raise HTTPException(status_code=422, detail="No human face detected. Please upload an image with a clear human face.")
     
     # Extract face region
     face_image = image.crop((x, y, x + width, y + height))
@@ -130,7 +130,8 @@ async def predict_gender_endpoint(
             if selected_gender.value == detected_gender.lower():
                 return {"gender": detected_gender}
             else:
-                return {"result": "mismatched gender please try again"}
+                # return {"result": "mismatched gender please try again"}
+                raise HTTPException(status_code=422, detail="mismatched gender please try again.")
         else:
             # Just return detected gender
             return {"gender": detected_gender}
