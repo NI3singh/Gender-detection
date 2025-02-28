@@ -8,7 +8,6 @@ import numpy as np
 from transformers import AutoModelForImageClassification, AutoImageProcessor
 import cv2
 from fastapi.responses import JSONResponse
-from please_help_me_solve import please_help_me_solve
 
 app = FastAPI(title="Gender Detection API")
 
