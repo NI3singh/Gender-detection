@@ -81,8 +81,10 @@ def predict_gender(image, bounding_boxes):
     results = []
     
     if not bounding_boxes:
-        print("No faces detected in the image")
-        return []
+        return JSONResponse(
+                status_code=422,
+                content={"detail": "No human face detected. Please upload an image with a clear human face."}
+            )
     
     for bbox in bounding_boxes:
         x1, y1, x2, y2 = bbox
@@ -145,7 +147,7 @@ async def predict_gender_endpoint(
         
         if not gender_predictions:
             return JSONResponse(
-                status_code=404,
+                status_code=422,
                 content={"detail": "Failed to classify gender for detected faces"}
             )
         
