@@ -22,7 +22,7 @@ class Gender(str, Enum):
 
 # Update these paths to be relative or use environment variables
 # You should place your model files in a directory accessible to your application
-MODEL_DIR = os.getenv("MODEL_DIR", r"C:\Users\itsni\Desktop\Gender-Detection\models")
+MODEL_DIR = os.getenv("MODEL_DIR", r"/home/gender/Gender-detection/models")
 
 faceProto = os.path.join(MODEL_DIR, "face_detection/opencv_face_detector_uint8.pb")
 faceModel = os.path.join(MODEL_DIR, "face_detection/opencv_face_detector.pbtxt")
