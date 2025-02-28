@@ -2,12 +2,10 @@ from fastapi import FastAPI, File, UploadFile, HTTPException, Query
 from PIL import Image
 from enum import Enum
 import io
-import torch
-from mtcnn import MTCNN
 import numpy as np
-from transformers import AutoModelForImageClassification, AutoImageProcessor
 import cv2
 from fastapi.responses import JSONResponse
+import os
 
 app = FastAPI(title="Gender Detection API")
 
@@ -22,142 +20,101 @@ class Gender(str, Enum):
     MALE = "male"
     FEMALE = "female"
 
+# Update these paths to be relative or use environment variables
+# You should place your model files in a directory accessible to your application
+MODEL_DIR = os.getenv("MODEL_DIR", r"C:\Users\itsni\Desktop\Gender-Detection\models")
 
-# Initialize MTCNN for face detection
-# detector = MTCNN()
+faceProto = os.path.join(MODEL_DIR, "face_detection/opencv_face_detector_uint8.pb")
+faceModel = os.path.join(MODEL_DIR, "face_detection/opencv_face_detector.pbtxt")
+faceNet = cv2.dnn.readNet(faceModel, faceProto)
 
-detector = MTCNN(min_face_size=30, scale_factor=0.709)
+genderProto = os.path.join(MODEL_DIR, "face_recognistion/gender_deploy.prototxt")
+genderModel = os.path.join(MODEL_DIR, "face_recognistion/gender_net.caffemodel")
+genderNet = cv2.dnn.readNet(genderModel, genderProto)
 
+genderList = ['Male', 'Female']
 
-try:
-    # Try to load the pre-trained face cascade (comes with OpenCV)
-    haar_cascade = cv2.CascadeClassifier(cv2.data.haarcascades + 'haarcascade_frontalface_default.xml')
-except Exception as e:
-    print(f"Warning: Could not load Haar cascade: {e}")
-    haar_cascade = None
-
-# Load the gender classification model
-model_name = "rizvandwiki/gender-classification-2"
-model = AutoModelForImageClassification.from_pretrained(model_name)
-image_processor = AutoImageProcessor.from_pretrained(model_name)
-
-def process_image(image_bytes):
+def process_image(faceDetectionModel, image_bytes, conf_threshold=0.7):
     # Convert bytes to PIL Image
-    image = Image.open(io.BytesIO(image_bytes))
+    pil_image = Image.open(io.BytesIO(image_bytes))
+    
+    # Convert PIL image to OpenCV format (numpy array)
+    if pil_image.mode != "RGB":
+        pil_image = pil_image.convert("RGB")
+    
+    # Convert PIL image to numpy array for OpenCV
+    image = np.array(pil_image)
+    
+    # Get image dimensions from numpy array
+    frameHeight, frameWidth = image.shape[:2]
+    
+    # Create a blob from the image
+    blob = cv2.dnn.blobFromImage(image, 1.0, (300, 300), [104, 117, 123], False, False)
+    
+    faceDetectionModel.setInput(blob)
+    detections = faceDetectionModel.forward()
+    
+    bounding_boxes = []
+    for i in range(detections.shape[2]):
+        confidence = detections[0, 0, i, 2]
+        
+        if confidence > conf_threshold:
+            x1 = int(detections[0, 0, i, 3] * frameWidth)
+            y1 = int(detections[0, 0, i, 4] * frameHeight)
+            x2 = int(detections[0, 0, i, 5] * frameWidth)
+            y2 = int(detections[0, 0, i, 6] * frameHeight)
+            
+            # Ensure coordinates are within image boundaries
+            x1 = max(0, x1)
+            y1 = max(0, y1)
+            x2 = min(frameWidth, x2)
+            y2 = min(frameHeight, y2)
+            
+            bounding_boxes.append([x1, y1, x2, y2])
+            
+            # Draw rectangle on the image (optional for debugging)
+            cv2.rectangle(image, (x1, y1), (x2, y2), (255, 0, 0), 2)
+    
+    return image, bounding_boxes
 
-    if image.mode != "RGB":
-        image = image.convert("RGB")
+def predict_gender(image, bounding_boxes):
+    results = []
     
-    # Convert PIL Image to numpy array for MTCNN
-    image_np = np.array(image)
+    if not bounding_boxes:
+        print("No faces detected in the image")
+        return []
     
-    # Detect faces using MTCNN
-    faces = detector.detect_faces(image_np)
-
-    # If MTCNN fails, try Haar Cascade as fallback
-    if not faces and haar_cascade is not None:
-        # Convert to grayscale for Haar Cascade
-        gray = cv2.cvtColor(image_np, cv2.COLOR_RGB2GRAY)
+    for bbox in bounding_boxes:
+        x1, y1, x2, y2 = bbox
         
-        # Detect faces using Haar Cascade
-        haar_faces = haar_cascade.detectMultiScale(
-            gray, 
-            scaleFactor=1.1, 
-            minNeighbors=5,
-            minSize=(30, 30)
-        )
+        # Check if the bounding box is valid
+        if x1 >= x2 or y1 >= y2 or x1 < 0 or y1 < 0 or x2 <= 0 or y2 <= 0:
+            continue
+            
+        # Extract the face ROI
+        face_roi = image[y1:y2, x1:x2]
         
-        # Convert Haar Cascade results to MTCNN-like format for consistent processing
-        if len(haar_faces) > 0:
-            faces = []
-            for (x, y, w, h) in haar_faces:
-                faces.append({
-                    'box': (x, y, w, h),
-                    'confidence': 0.95  # Placeholder confidence
-                })
-    
-    if not faces:
-        raise HTTPException(status_code=422, detail="No human face detected. Please upload an image with a clear human face.")
-    
-    if len(faces) > 1:
-        raise HTTPException(status_code=422, detail="Multiple faces detected. Please upload an image with a single clear human face.")
-    
-    # Get the first face (assuming single person)
-    face = faces[0]
-    x, y, width, height = face['box']
-    confidence = face['confidence']
-
-    if confidence < 0.85:  # Using a high threshold to filter out non-human faces
-        raise HTTPException(status_code=422, detail="No human face detected. Please upload an image with a clear human face.")
-    
-    # Make sure box coordinates are valid
-    x, y = max(0, x), max(0, y)
-    width = min(width, image_np.shape[1] - x)
-    height = min(height, image_np.shape[0] - y)
-    
-    # Extract face region with some margin
-    margin_percent = 0.2
-    margin_x = int(width * margin_percent)
-    margin_y = int(height * margin_percent)
-    
-    # Ensure the expanded region doesn't go outside the image bounds
-    x_expanded = max(0, x - margin_x)
-    y_expanded = max(0, y - margin_y)
-    width_expanded = min(width + 2 * margin_x, image_np.shape[1] - x_expanded)
-    height_expanded = min(height + 2 * margin_y, image_np.shape[0] - y_expanded)
-    
-    # Extract face region
-    # face_image = image.crop((x, y, x + width, y + height))
-    
-    face_image = image.crop((x_expanded, y_expanded, x_expanded + width_expanded, y_expanded + height_expanded))
-
-    return face_image
-
-def predict_gender(face_image):
-    # Prepare image for the model
-    inputs = image_processor(face_image, return_tensors="pt")
-    # print(inputs)
-
-    
-    # Get prediction
-    with torch.no_grad():
-        outputs = model(**inputs)
-        predictions = outputs.logits.softmax(dim=-1)
+        # Check if face_roi is empty
+        if face_roi.size == 0:
+            continue
+            
+        # Preprocess for gender classification
+        blob = cv2.dnn.blobFromImage(face_roi, 1.0, (227, 227), 
+                                     [78.4263377603, 87.7689143744, 114.895847746], 
+                                     swapRB=False)
         
-    # Get predicted class
-    predicted_class = model.config.id2label[predictions.argmax().item()]
+        genderNet.setInput(blob)
+        gender_preds = genderNet.forward()
+        gender_idx = gender_preds[0].argmax()
+        gender = genderList[gender_idx]
+        confidence = float(gender_preds[0][gender_idx])
+        
+        results.append({
+            "gender": gender,
+            "confidence": confidence,
+        })
     
-    return predicted_class
-
-# @app.post("/predict-gender/<predicted_class>")
-# async def predict_gender_endpoint(file: UploadFile = File(...)):
-#     try:
-#         # Read image file
-#         image_bytes = await file.read()
-        
-#         # Process image and get face
-#         face_image = process_image(image_bytes)
-        
-#         if face_image is None:
-#             return JSONResponse(
-#                 status_code=400,
-#                 content={"detail": "No face detected in the image. Please upload a different image."}
-#             )
-        
-#         # Predict gender
-#         gender = predict_gender(face_image)
-        
-#         if gender.lower() == predicted_class.lower():
-#             return jsonify({"gender": gender}), 200
-#         else:
-#             return jsonify({"error": "Gender mismatch"}), 400
-#         # return {"gender": gender}
-        
-#     except Exception as e:
-#         return JSONResponse(
-#             status_code=500,
-#             content={"detail": f"An error occurred: {str(e)}"}
-#         )
+    return results
 
 @app.post("/predict-gender")
 async def predict_gender_endpoint(
@@ -168,25 +125,48 @@ async def predict_gender_endpoint(
         # Read image file
         image_bytes = await file.read()
         
-        # Process image and get face
-        face_image = process_image(image_bytes)
+        # Process image and get faces
+        processed_image, bounding_boxes = process_image(faceNet, image_bytes)
         
-        # Predict gender
-        detected_gender = predict_gender(face_image)
+        if not bounding_boxes:
+            return JSONResponse(
+                status_code=422,
+                content={"detail": "Face is not detected, try to upload clear image again"}
+            )
         
-        # If user selected a gender, compare with detected
+        if len(bounding_boxes) > 1:
+            return JSONResponse(
+                status_code=422,
+                content={"detail": "Multiple faces detected, please upload an image with a single face."}
+            )
+        
+        # Predict gender for all detected faces
+        gender_predictions = predict_gender(processed_image, bounding_boxes)
+        
+        if not gender_predictions:
+            return JSONResponse(
+                status_code=404,
+                content={"detail": "Failed to classify gender for detected faces"}
+            )
+        
+        # Get gender from first face (taking the most prominent face in the image)
+        detected_gender = gender_predictions[0]["gender"]
+        
+        # If user selected a gender to verify
         if selected_gender:
-            # Check if they match
-            if selected_gender.value == detected_gender.lower():
+            # Check if detected gender matches the selected gender
+            if detected_gender.lower() == selected_gender.value:
                 return {"gender": detected_gender}
             else:
-                # return {"result": "mismatched gender please try again"}
-                raise HTTPException(status_code=422, detail="mismatched gender please try again.")
+                return JSONResponse(
+                    status_code=422,
+                    content={"detail": "mismatched gender please try again."}
+                )
         else:
-            # Just return detected gender
+            # Just return detected gender in the required format
             return {"gender": detected_gender}
-        
-    except HTTPException as e:
-        raise e
+            
     except Exception as e:
+        import traceback
+        traceback.print_exc()
         raise HTTPException(status_code=500, detail=f"An error occurred: {str(e)}")
