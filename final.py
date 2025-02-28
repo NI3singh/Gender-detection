@@ -1,13 +1,13 @@
-from fastapi import FastAPI, File, UploadFile, HTTPException
+from fastapi import FastAPI, File, UploadFile, HTTPException, Query
 from PIL import Image
+from enum import Enum
 import io
-import torch
-from mtcnn import MTCNN
 import numpy as np
-from transformers import AutoModelForImageClassification, AutoImageProcessor
 import cv2
+from fastapi.responses import JSONResponse
+import os
 
-app = FastAPI()
+app = FastAPI(title="Gender Detection API")
 
 @app.get("/")
 async def root():
@@ -16,71 +16,159 @@ async def root():
         "usage": "Send a POST request with an image file to /predict-gender endpoint"
     }
 
-# Initialize MTCNN for face detection
-detector = MTCNN()
+class Gender(str, Enum):
+    MALE = "male"
+    FEMALE = "female"
 
-# Load the gender classification model
-model_name = "rizvandwiki/gender-classification-2"
-model = AutoModelForImageClassification.from_pretrained(model_name)
-image_processor = AutoImageProcessor.from_pretrained(model_name)
+# Update these paths to be relative or use environment variables
+# You should place your model files in a directory accessible to your application
+MODEL_DIR = os.getenv("MODEL_DIR", r"/home/gender/Gender-detection/models")
 
-def process_image(image_bytes):
+faceProto = os.path.join(MODEL_DIR, "face_detection/opencv_face_detector_uint8.pb")
+faceModel = os.path.join(MODEL_DIR, "face_detection/opencv_face_detector.pbtxt")
+faceNet = cv2.dnn.readNet(faceModel, faceProto)
+
+genderProto = os.path.join(MODEL_DIR, "face_recognistion/gender_deploy.prototxt")
+genderModel = os.path.join(MODEL_DIR, "face_recognistion/gender_net.caffemodel")
+genderNet = cv2.dnn.readNet(genderModel, genderProto)
+
+genderList = ['Male', 'Female']
+
+def process_image(faceDetectionModel, image_bytes, conf_threshold=0.7):
     # Convert bytes to PIL Image
-    image = Image.open(io.BytesIO(image_bytes))
+    pil_image = Image.open(io.BytesIO(image_bytes))
     
-    # Convert PIL Image to numpy array for MTCNN
-    image_np = np.array(image)
+    # Convert PIL image to OpenCV format (numpy array)
+    if pil_image.mode != "RGB":
+        pil_image = pil_image.convert("RGB")
     
-    # Detect faces using MTCNN
-    faces = detector.detect_faces(image_np)
+    # Convert PIL image to numpy array for OpenCV
+    image = np.array(pil_image)
     
-    if not faces:
-        raise HTTPException(status_code=400, detail="No face detected in the image. Please upload a different image.")
+    # Get image dimensions from numpy array
+    frameHeight, frameWidth = image.shape[:2]
     
-    # Get the first face (assuming single person)
-    face = faces[0]
-    x, y, width, height = face['box']
+    # Create a blob from the image
+    blob = cv2.dnn.blobFromImage(image, 1.0, (300, 300), [104, 117, 123], False, False)
     
-    # Extract face region
-    face_image = image.crop((x, y, x + width, y + height))
+    faceDetectionModel.setInput(blob)
+    detections = faceDetectionModel.forward()
     
-    return face_image
-
-def predict_gender(face_image):
-    # Prepare image for the model
-    inputs = image_processor(face_image, return_tensors="pt")
-    print(inputs)
-
-    
-    # Get prediction
-    with torch.no_grad():
-        outputs = model(**inputs)
-        predictions = outputs.logits.softmax(dim=-1)
+    bounding_boxes = []
+    for i in range(detections.shape[2]):
+        confidence = detections[0, 0, i, 2]
         
-    # Get predicted class
-    predicted_class = model.config.id2label[predictions.argmax().item()]
+        if confidence > conf_threshold:
+            x1 = int(detections[0, 0, i, 3] * frameWidth)
+            y1 = int(detections[0, 0, i, 4] * frameHeight)
+            x2 = int(detections[0, 0, i, 5] * frameWidth)
+            y2 = int(detections[0, 0, i, 6] * frameHeight)
+            
+            # Ensure coordinates are within image boundaries
+            x1 = max(0, x1)
+            y1 = max(0, y1)
+            x2 = min(frameWidth, x2)
+            y2 = min(frameHeight, y2)
+            
+            bounding_boxes.append([x1, y1, x2, y2])
+            
+            # Draw rectangle on the image (optional for debugging)
+            cv2.rectangle(image, (x1, y1), (x2, y2), (255, 0, 0), 2)
     
-    return predicted_class
+    return image, bounding_boxes
+
+def predict_gender(image, bounding_boxes):
+    results = []
+    
+    if not bounding_boxes:
+        return JSONResponse(
+                status_code=422,
+                content={"detail": "No human face detected. Please upload an image with a clear human face."}
+            )
+    
+    for bbox in bounding_boxes:
+        x1, y1, x2, y2 = bbox
+        
+        # Check if the bounding box is valid
+        if x1 >= x2 or y1 >= y2 or x1 < 0 or y1 < 0 or x2 <= 0 or y2 <= 0:
+            continue
+            
+        # Extract the face ROI
+        face_roi = image[y1:y2, x1:x2]
+        
+        # Check if face_roi is empty
+        if face_roi.size == 0:
+            continue
+            
+        # Preprocess for gender classification
+        blob = cv2.dnn.blobFromImage(face_roi, 1.0, (227, 227), 
+                                     [78.4263377603, 87.7689143744, 114.895847746], 
+                                     swapRB=False)
+        
+        genderNet.setInput(blob)
+        gender_preds = genderNet.forward()
+        gender_idx = gender_preds[0].argmax()
+        gender = genderList[gender_idx]
+        confidence = float(gender_preds[0][gender_idx])
+        
+        results.append({
+            "gender": gender,
+            "confidence": confidence,
+        })
+    
+    return results
 
 @app.post("/predict-gender")
-async def predict_gender_endpoint(file: UploadFile = File(...)):
+async def predict_gender_endpoint(
+    file: UploadFile = File(...),
+    selected_gender: Gender = Query(..., description=" ")
+):
     try:
         # Read image file
         image_bytes = await file.read()
         
-        # Process image and get face
-        face_image = process_image(image_bytes)
+        # Process image and get faces
+        processed_image, bounding_boxes = process_image(faceNet, image_bytes)
         
-        # Predict gender
-        gender = predict_gender(face_image)
+        if not bounding_boxes:
+            return JSONResponse(
+                status_code=422,
+                content={"detail": "Face is not detected, try to upload clear image again"}
+            )
         
-        return {"gender": gender}
+        if len(bounding_boxes) > 1:
+            return JSONResponse(
+                status_code=422,
+                content={"detail": "Multiple faces detected, please upload an image with a single face."}
+            )
         
-    except HTTPException as e:
-        raise e
+        # Predict gender for all detected faces
+        gender_predictions = predict_gender(processed_image, bounding_boxes)
+        
+        if not gender_predictions:
+            return JSONResponse(
+                status_code=422,
+                content={"detail": "Failed to classify gender for detected faces"}
+            )
+        
+        # Get gender from first face (taking the most prominent face in the image)
+        detected_gender = gender_predictions[0]["gender"]
+        
+        # If user selected a gender to verify
+        if selected_gender:
+            # Check if detected gender matches the selected gender
+            if detected_gender.lower() == selected_gender.value:
+                return {"gender": detected_gender}
+            else:
+                return JSONResponse(
+                    status_code=422,
+                    content={"detail": "mismatched gender please try again."}
+                )
+        else:
+            # Just return detected gender in the required format
+            return {"gender": detected_gender}
+            
     except Exception as e:
+        import traceback
+        traceback.print_exc()
         raise HTTPException(status_code=500, detail=f"An error occurred: {str(e)}")
-
-if __name__ == "__main__":
-    import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=8000)
