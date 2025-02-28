@@ -90,9 +90,27 @@ def process_image(image_bytes):
     if confidence < 0.85:  # Using a high threshold to filter out non-human faces
         raise HTTPException(status_code=422, detail="No human face detected. Please upload an image with a clear human face.")
     
-    # Extract face region
-    face_image = image.crop((x, y, x + width, y + height))
+    # Make sure box coordinates are valid
+    x, y = max(0, x), max(0, y)
+    width = min(width, image_np.shape[1] - x)
+    height = min(height, image_np.shape[0] - y)
     
+    # Extract face region with some margin
+    margin_percent = 0.2
+    margin_x = int(width * margin_percent)
+    margin_y = int(height * margin_percent)
+    
+    # Ensure the expanded region doesn't go outside the image bounds
+    x_expanded = max(0, x - margin_x)
+    y_expanded = max(0, y - margin_y)
+    width_expanded = min(width + 2 * margin_x, image_np.shape[1] - x_expanded)
+    height_expanded = min(height + 2 * margin_y, image_np.shape[0] - y_expanded)
+    
+    # Extract face region
+    # face_image = image.crop((x, y, x + width, y + height))
+    
+    face_image = image.crop((x_expanded, y_expanded, x_expanded + width_expanded, y_expanded + height_expanded))
+
     return face_image
 
 def predict_gender(face_image):
