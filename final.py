@@ -24,7 +24,17 @@ class Gender(str, Enum):
 
 
 # Initialize MTCNN for face detection
-detector = MTCNN()
+# detector = MTCNN()
+
+detector = MTCNN(min_face_size=30, scale_factor=0.709)
+
+
+try:
+    # Try to load the pre-trained face cascade (comes with OpenCV)
+    haar_cascade = cv2.CascadeClassifier(cv2.data.haarcascades + 'haarcascade_frontalface_default.xml')
+except Exception as e:
+    print(f"Warning: Could not load Haar cascade: {e}")
+    haar_cascade = None
 
 # Load the gender classification model
 model_name = "rizvandwiki/gender-classification-2"
@@ -43,6 +53,28 @@ def process_image(image_bytes):
     
     # Detect faces using MTCNN
     faces = detector.detect_faces(image_np)
+
+    # If MTCNN fails, try Haar Cascade as fallback
+    if not faces and haar_cascade is not None:
+        # Convert to grayscale for Haar Cascade
+        gray = cv2.cvtColor(image_np, cv2.COLOR_RGB2GRAY)
+        
+        # Detect faces using Haar Cascade
+        haar_faces = haar_cascade.detectMultiScale(
+            gray, 
+            scaleFactor=1.1, 
+            minNeighbors=5,
+            minSize=(30, 30)
+        )
+        
+        # Convert Haar Cascade results to MTCNN-like format for consistent processing
+        if len(haar_faces) > 0:
+            faces = []
+            for (x, y, w, h) in haar_faces:
+                faces.append({
+                    'box': (x, y, w, h),
+                    'confidence': 0.95  # Placeholder confidence
+                })
     
     if not faces:
         raise HTTPException(status_code=422, detail="No human face detected. Please upload an image with a clear human face.")
@@ -55,7 +87,7 @@ def process_image(image_bytes):
     x, y, width, height = face['box']
     confidence = face['confidence']
 
-    if confidence < 0.9:  # Using a high threshold to filter out non-human faces
+    if confidence < 0.85:  # Using a high threshold to filter out non-human faces
         raise HTTPException(status_code=422, detail="No human face detected. Please upload an image with a clear human face.")
     
     # Extract face region
