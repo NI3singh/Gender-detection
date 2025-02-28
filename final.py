@@ -45,7 +45,7 @@ def process_image(image_bytes):
     faces = detector.detect_faces(image_np)
     
     if not faces:
-        return None
+        raise HTTPException(status_code=422, detail="No human face detected. Please upload an image with a clear human face.")
     
     if len(faces) > 1:
         raise HTTPException(status_code=422, detail="Multiple faces detected. Please upload an image with a single clear human face.")
