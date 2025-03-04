@@ -6,6 +6,7 @@ import numpy as np
 import cv2
 from fastapi.responses import JSONResponse
 import os
+from retinaface import RetinaFace
 
 app = FastAPI(title="Gender Detection API")
 
@@ -46,34 +47,50 @@ def process_image(faceDetectionModel, image_bytes, conf_threshold=0.7):
     image = np.array(pil_image)
     
     # Get image dimensions from numpy array
-    frameHeight, frameWidth = image.shape[:2]
+    # frameHeight, frameWidth = image.shape[:2]
     
-    # Create a blob from the image
-    blob = cv2.dnn.blobFromImage(image, 1.0, (300, 300), [104, 117, 123], False, False)
+    # # Create a blob from the image
+    # blob = cv2.dnn.blobFromImage(image, 1.0, (300, 300), [104, 117, 123], False, False)
     
-    faceDetectionModel.setInput(blob)
-    detections = faceDetectionModel.forward()
+    # faceDetectionModel.setInput(blob)
+    # detections = faceDetectionModel.forward()
     
-    bounding_boxes = []
-    for i in range(detections.shape[2]):
-        confidence = detections[0, 0, i, 2]
+    # bounding_boxes = []
+    # for i in range(detections.shape[2]):
+    #     confidence = detections[0, 0, i, 2]
         
-        if confidence > conf_threshold:
-            x1 = int(detections[0, 0, i, 3] * frameWidth)
-            y1 = int(detections[0, 0, i, 4] * frameHeight)
-            x2 = int(detections[0, 0, i, 5] * frameWidth)
-            y2 = int(detections[0, 0, i, 6] * frameHeight)
+    #     if confidence > conf_threshold:
+    #         x1 = int(detections[0, 0, i, 3] * frameWidth)
+    #         y1 = int(detections[0, 0, i, 4] * frameHeight)
+    #         x2 = int(detections[0, 0, i, 5] * frameWidth)
+    #         y2 = int(detections[0, 0, i, 6] * frameHeight)
             
-            # Ensure coordinates are within image boundaries
-            x1 = max(0, x1)
-            y1 = max(0, y1)
-            x2 = min(frameWidth, x2)
-            y2 = min(frameHeight, y2)
+    #         # Ensure coordinates are within image boundaries
+    #         x1 = max(0, x1)
+    #         y1 = max(0, y1)
+    #         x2 = min(frameWidth, x2)
+    #         y2 = min(frameHeight, y2)
             
-            bounding_boxes.append([x1, y1, x2, y2])
+    #         bounding_boxes.append([x1, y1, x2, y2])
             
-            # Draw rectangle on the image (optional for debugging)
-            cv2.rectangle(image, (x1, y1), (x2, y2), (255, 0, 0), 2)
+    #         # Draw rectangle on the image (optional for debugging)
+    #         cv2.rectangle(image, (x1, y1), (x2, y2), (255, 0, 0), 2)
+    # RetinaFace detection
+    faces = RetinaFace.detect_faces(image)
+
+    bounding_boxes = []
+    for key in faces:
+        face_data = faces[key]
+        x1, y1, x2, y2 = face_data["facial_area"]
+        
+        bounding_boxes.append([x1, y1, x2, y2])
+
+            
+    if len(faces) > 1:
+        return JSONResponse(
+            status_code=422,
+            content={"detail": "Multiple faces detected, please upload an image with a single face."}
+        )
     
     return image, bounding_boxes
 
@@ -136,11 +153,11 @@ async def predict_gender_endpoint(
                 content={"detail": "Face is not detected, try to upload clear image again"}
             )
         
-        if len(bounding_boxes) > 1:
-            return JSONResponse(
-                status_code=422,
-                content={"detail": "Multiple faces detected, please upload an image with a single face."}
-            )
+        # if len(bounding_boxes) > 1:
+        #     return JSONResponse(
+        #         status_code=422,
+        #         content={"detail": "Multiple faces detected, please upload an image with a single face."}
+        #     )
         
         # Predict gender for all detected faces
         gender_predictions = predict_gender(processed_image, bounding_boxes)
