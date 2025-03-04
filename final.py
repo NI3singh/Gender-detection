@@ -153,11 +153,11 @@ async def predict_gender_endpoint(
                 content={"detail": "Face is not detected, try to upload clear image again"}
             )
         
-        # if len(bounding_boxes) > 1:
-        #     return JSONResponse(
-        #         status_code=422,
-        #         content={"detail": "Multiple faces detected, please upload an image with a single face."}
-        #     )
+        if len(bounding_boxes) > 1:
+            return JSONResponse(
+                status_code=422,
+                content={"detail": "Multiple faces detected, please upload an image with a single face."}
+            )
         
         # Predict gender for all detected faces
         gender_predictions = predict_gender(processed_image, bounding_boxes)
@@ -188,4 +188,4 @@ async def predict_gender_endpoint(
     except Exception as e:
         import traceback
         traceback.print_exc()
-        raise HTTPException(status_code=422, detail=f"An error occurred: {str(e)}")
+        raise HTTPException(status_code=422, detail=f"Please Upload a Human Face Image and try again.")
