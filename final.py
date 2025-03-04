@@ -115,7 +115,7 @@ def predict_gender(faces, bounding_boxes):
                                      [78.4263377603, 87.7689143744, 114.895847746], 
                                      swapRB=False)
         
-        genderNet.setInput(blob)
+        genderNet.setInput(faces)
         gender_preds = genderNet.forward()
         gender_idx = gender_preds[0].argmax()
         gender = genderList[gender_idx]
