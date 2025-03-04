@@ -171,4 +171,4 @@ async def predict_gender_endpoint(
     except Exception as e:
         import traceback
         traceback.print_exc()
-        raise HTTPException(status_code=500, detail=f"An error occurred: {str(e)}")
+        raise HTTPException(status_code=422, detail=f"An error occurred: {str(e)}")
