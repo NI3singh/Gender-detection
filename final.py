@@ -104,16 +104,16 @@ def predict_gender(faces, bounding_boxes):
             continue
             
         # Extract the face ROI
-        face_roi = faces[y1:y2, x1:x2]
+        # face_roi = faces[y1:y2, x1:x2]
         
-        # Check if face_roi is empty
-        if face_roi.size == 0:
-            continue
+        # # Check if face_roi is empty
+        # if face_roi.size == 0:
+        #     continue
             
         # Preprocess for gender classification
-        blob = cv2.dnn.blobFromImage(face_roi, 1.0, (227, 227), 
-                                     [78.4263377603, 87.7689143744, 114.895847746], 
-                                     swapRB=False)
+        # blob = cv2.dnn.blobFromImage(face_roi, 1.0, (227, 227), 
+        #                              [78.4263377603, 87.7689143744, 114.895847746], 
+        #                              swapRB=False)
         
         genderNet.setInput(faces)
         gender_preds = genderNet.forward()
