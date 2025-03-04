@@ -77,7 +77,7 @@ def process_image(faceDetectionModel, image_bytes, conf_threshold=0.7):
     #         cv2.rectangle(image, (x1, y1), (x2, y2), (255, 0, 0), 2)
     # RetinaFace detection
     faces = RetinaFace.detect_faces(image)
-
+    print(len(faces))
     bounding_boxes = []
     for key in faces:
         face_data = faces[key]
@@ -85,7 +85,7 @@ def process_image(faceDetectionModel, image_bytes, conf_threshold=0.7):
         
         bounding_boxes.append([x1, y1, x2, y2])
 
-            
+    
     if len(faces) > 1:
         return JSONResponse(
             status_code=422,
