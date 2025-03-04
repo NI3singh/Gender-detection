@@ -34,7 +34,7 @@ genderNet = cv2.dnn.readNet(genderModel, genderProto)
 
 genderList = ['Male', 'Female']
 
-def process_image(faceDetectionModel, image_bytes, conf_threshold=0.7):
+def process_image(faceDetectionModel, image_bytes, conf_threshold=0.85):
     # Convert bytes to PIL Image
     pil_image = Image.open(io.BytesIO(image_bytes))
     
