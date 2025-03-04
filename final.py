@@ -188,4 +188,4 @@ async def predict_gender_endpoint(
     except Exception as e:
         import traceback
         traceback.print_exc()
-        raise HTTPException(status_code=422, detail=f"Please Upload a Human Face Image and try again.")
+        raise HTTPException(status_code=422, detail=f"Please Upload a High Quality Face Image and try again.")
