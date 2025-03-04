@@ -35,7 +35,7 @@ genderNet = cv2.dnn.readNet(genderModel, genderProto)
 
 genderList = ['Male', 'Female']
 
-def process_image(faceDetectionModel, image_bytes, conf_threshold=0.7):
+def process_image(image_bytes):
     # Convert bytes to PIL Image
     pil_image = Image.open(io.BytesIO(image_bytes))
     
@@ -92,9 +92,9 @@ def process_image(faceDetectionModel, image_bytes, conf_threshold=0.7):
             content={"detail": "Multiple faces detected, please upload an image with a single face."}
         )
     
-    return image, bounding_boxes
+    return faces, bounding_boxes
 
-def predict_gender(image, bounding_boxes):
+def predict_gender(faces, bounding_boxes):
     results = []
     
     if not bounding_boxes:
@@ -111,7 +111,7 @@ def predict_gender(image, bounding_boxes):
             continue
             
         # Extract the face ROI
-        face_roi = image[y1:y2, x1:x2]
+        face_roi = faces[y1:y2, x1:x2]
         
         # Check if face_roi is empty
         if face_roi.size == 0:
@@ -145,7 +145,7 @@ async def predict_gender_endpoint(
         image_bytes = await file.read()
         
         # Process image and get faces
-        processed_image, bounding_boxes = process_image(faceNet, image_bytes)
+        processed_image, bounding_boxes = process_image(image_bytes)
         
         if not bounding_boxes:
             return JSONResponse(
