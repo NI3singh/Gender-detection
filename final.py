@@ -87,10 +87,7 @@ def process_image(image_bytes):
 
     
     if len(faces) > 1:
-        return JSONResponse(
-            status_code=422,
-            content={"detail": "Multiple faces detected, please upload an image with a single face."}
-        )
+        return None
     
     return faces, bounding_boxes
 
@@ -146,6 +143,12 @@ async def predict_gender_endpoint(
         
         # Process image and get faces
         processed_image, bounding_boxes = process_image(image_bytes)
+
+        if processed_image is None or bounding_boxes is None:
+            return JSONResponse(
+                status_code=422,
+                content={"detail": "Multiple faces detected, please upload an image with a single face."}
+            )
         
         if not bounding_boxes:
             return JSONResponse(
@@ -153,11 +156,11 @@ async def predict_gender_endpoint(
                 content={"detail": "Face is not detected, try to upload clear image again"}
             )
         
-        if len(bounding_boxes) > 1:
-            return JSONResponse(
-                status_code=422,
-                content={"detail": "Multiple faces detected, please upload an image with a single face."}
-            )
+        # if len(bounding_boxes) > 1:
+        #     return JSONResponse(
+        #         status_code=422,
+        #         content={"detail": "Multiple faces detected, please upload an image with a single face."}
+        #     )
         
         # Predict gender for all detected faces
         gender_predictions = predict_gender(processed_image, bounding_boxes)
