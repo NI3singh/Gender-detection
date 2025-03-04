@@ -43,8 +43,9 @@ def process_image(faceDetectionModel, image_bytes, conf_threshold=0.85):
         pil_image = pil_image.convert("RGB")
     
     # Convert PIL image to numpy array for OpenCV
-    image = cv2.resize(image, (500, 500))  # Resize before face detection
+      # Resize before face detection
     image = np.array(pil_image)
+    image = cv2.resize(image, (500, 500))
     
     # Get image dimensions from numpy array
     frameHeight, frameWidth = image.shape[:2]
