@@ -7,7 +7,6 @@ import cv2
 from fastapi.responses import JSONResponse
 import os
 from retinaface import RetinaFace
-
 app = FastAPI(title="Gender Detection API")
 
 @app.get("/")
@@ -35,7 +34,7 @@ genderNet = cv2.dnn.readNet(genderModel, genderProto)
 
 genderList = ['Male', 'Female']
 
-def process_image(image_bytes):
+def process_image(faceDetectionModel, image_bytes, conf_threshold=0.7):
     # Convert bytes to PIL Image
     pil_image = Image.open(io.BytesIO(image_bytes))
     
@@ -47,47 +46,38 @@ def process_image(image_bytes):
     image = np.array(pil_image)
     
     # Get image dimensions from numpy array
-    # frameHeight, frameWidth = image.shape[:2]
+    frameHeight, frameWidth = image.shape[:2]
     
-    # # Create a blob from the image
-    # blob = cv2.dnn.blobFromImage(image, 1.0, (300, 300), [104, 117, 123], False, False)
+    # Create a blob from the image
+    blob = cv2.dnn.blobFromImage(image, 1.0, (300, 300), [104, 117, 123], False, False)
     
-    # faceDetectionModel.setInput(blob)
-    # detections = faceDetectionModel.forward()
+    faceDetectionModel.setInput(blob)
+    detections = faceDetectionModel.forward()
     
-    # bounding_boxes = []
-    # for i in range(detections.shape[2]):
-    #     confidence = detections[0, 0, i, 2]
-        
-    #     if confidence > conf_threshold:
-    #         x1 = int(detections[0, 0, i, 3] * frameWidth)
-    #         y1 = int(detections[0, 0, i, 4] * frameHeight)
-    #         x2 = int(detections[0, 0, i, 5] * frameWidth)
-    #         y2 = int(detections[0, 0, i, 6] * frameHeight)
-            
-    #         # Ensure coordinates are within image boundaries
-    #         x1 = max(0, x1)
-    #         y1 = max(0, y1)
-    #         x2 = min(frameWidth, x2)
-    #         y2 = min(frameHeight, y2)
-            
-    #         bounding_boxes.append([x1, y1, x2, y2])
-            
-    #         # Draw rectangle on the image (optional for debugging)
-    #         cv2.rectangle(image, (x1, y1), (x2, y2), (255, 0, 0), 2)
-    # RetinaFace detection
-    faces = RetinaFace.detect_faces(image)
-    print(len(faces))
     bounding_boxes = []
-    for key in faces:
-        face_data = faces[key]
-        x1, y1, x2, y2 = face_data["facial_area"]
+    for i in range(detections.shape[2]):
+        confidence = detections[0, 0, i, 2]
         
-        bounding_boxes.append([x1, y1, x2, y2])
+        if confidence > conf_threshold:
+            x1 = int(detections[0, 0, i, 3] * frameWidth)
+            y1 = int(detections[0, 0, i, 4] * frameHeight)
+            x2 = int(detections[0, 0, i, 5] * frameWidth)
+            y2 = int(detections[0, 0, i, 6] * frameHeight)
+            
+            # Ensure coordinates are within image boundaries
+            x1 = max(0, x1)
+            y1 = max(0, y1)
+            x2 = min(frameWidth, x2)
+            y2 = min(frameHeight, y2)
+            
+            bounding_boxes.append([x1, y1, x2, y2])
+            
+            # Draw rectangle on the image (optional for debugging)
+            cv2.rectangle(image, (x1, y1), (x2, y2), (255, 0, 0), 2)
     
-    return faces, bounding_boxes
+    return image, bounding_boxes
 
-def predict_gender(faces, bounding_boxes):
+def predict_gender(image, bounding_boxes):
     results = []
     
     if not bounding_boxes:
@@ -104,18 +94,18 @@ def predict_gender(faces, bounding_boxes):
             continue
             
         # Extract the face ROI
-        # face_roi = faces[y1:y2, x1:x2]
+        face_roi = image[y1:y2, x1:x2]
         
-        # # Check if face_roi is empty
-        # if face_roi.size == 0:
-        #     continue
+        # Check if face_roi is empty
+        if face_roi.size == 0:
+            continue
             
         # Preprocess for gender classification
-        # blob = cv2.dnn.blobFromImage(face_roi, 1.0, (227, 227), 
-        #                              [78.4263377603, 87.7689143744, 114.895847746], 
-        #                              swapRB=False)
+        blob = cv2.dnn.blobFromImage(face_roi, 1.0, (227, 227), 
+                                     [78.4263377603, 87.7689143744, 114.895847746], 
+                                     swapRB=False)
         
-        genderNet.setInput(faces)
+        genderNet.setInput(blob)
         gender_preds = genderNet.forward()
         gender_idx = gender_preds[0].argmax()
         gender = genderList[gender_idx]
@@ -138,7 +128,7 @@ async def predict_gender_endpoint(
         image_bytes = await file.read()
         
         # Process image and get faces
-        processed_image, bounding_boxes = process_image(image_bytes)
+        processed_image, bounding_boxes = process_image(faceNet, image_bytes)
         
         if not bounding_boxes:
             return JSONResponse(
@@ -163,12 +153,12 @@ async def predict_gender_endpoint(
         
         # Get gender from first face (taking the most prominent face in the image)
         detected_gender = gender_predictions[0]["gender"]
-        
+        detected_confidence = gender_predictions[0]["confidence"]
         # If user selected a gender to verify
         if selected_gender:
             # Check if detected gender matches the selected gender
             if detected_gender.lower() == selected_gender.value:
-                return {"gender": detected_gender}
+                return {"gender": detected_gender, "confidence": detected_confidence}
             else:
                 return JSONResponse(
                     status_code=422,
@@ -176,9 +166,9 @@ async def predict_gender_endpoint(
                 )
         else:
             # Just return detected gender in the required format
-            return {"gender": detected_gender}
+            return {"gender": detected_gender, "confidence": detected_confidence}
             
     except Exception as e:
         import traceback
         traceback.print_exc()
-        raise HTTPException(status_code=422, detail=f"Please Upload a High Quality Face Image and try again.")
+        raise HTTPException(status_code=422, detail=f"An error occurred: {str(e)}")
