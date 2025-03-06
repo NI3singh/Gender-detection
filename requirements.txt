@@ -1,0 +1,8 @@
+retina-face 
+fastapi 
+python-multipart
+pillow 
+opencv-python
+torch 
+torchvision
+openai-clip
