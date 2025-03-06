@@ -83,7 +83,7 @@ Open your browser and navigate to:
 Success:
 ```json
 {
-  "gender": "male" or "female",
+  "gender": "male" "or" "female",
 }
 ```
 
