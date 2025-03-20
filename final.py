@@ -414,10 +414,10 @@ def prediction_of_gender(image: Image.Image) -> str:
             else:
                 return "female"    
         else:
-            raise ValueError("No Human Face Detected")
+            raise ValueError("No human face detected, only human faces are supported.")
 
     except Exception as e:
-        raise ValueError("No Human Face Detected, Try again with Human Face Image")
+        raise ValueError("No human face detected, only human faces are supported.")
 
 # Helper function to preprocess image for DeepFace
 def preprocess_image_for_deepface(image: np.ndarray):
@@ -433,12 +433,12 @@ def detect_face(image: np.ndarray):
     
 
     if len(faces) > 1:
-        raise ValueError("Multiple faces detected, please upload an image with only one face----91")
+        raise ValueError("Multiple faces detected, please upload an image with only one face.")
     
     # Ensure the detected face is a human face (this is inferred from RetinaFace output metadata)
     face_data = list(faces.values())[0]
     if face_data['score'] < 0.5:
-        raise ValueError("Low confidence face detection")
+        raise ValueError("No human face detected, only human faces are supported.")
     
     return True  # Return the first detected face
 
@@ -458,7 +458,7 @@ async def predict_gender(selected_gender: Gender = Query(..., description=" "), 
         try:
             face = detect_face(image_np)
         except ValueError as e:
-            return JSONResponse(status_code=422, content={"message": "Multiple faces detected, please upload an image with only one face"})
+            return JSONResponse(status_code=422, content={"message": "Multiple faces detected, please upload an image with only one face."})
         
         # Step 4: Get CLIP classification result
         try:
@@ -466,7 +466,7 @@ async def predict_gender(selected_gender: Gender = Query(..., description=" "), 
         except ValueError as e:
             return JSONResponse(
                 status_code=422,
-                content={"message": "No human face detected, only human faces are supported"}
+                content={"message": "No human face detected, only human faces are supported."}
             )
         
         # Step 3: Check if the predicted gender matches the user-selected gender
@@ -484,5 +484,5 @@ async def predict_gender(selected_gender: Gender = Query(..., description=" "), 
     except Exception as e:
         return JSONResponse(
             status_code=422,
-            content={"message": "An error occurred while processing the image. Please try again."}
+            content={"message": "No human face detected, only human faces are supported."}
         )
